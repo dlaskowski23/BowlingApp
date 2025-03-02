@@ -1,4 +1,4 @@
-## 🎳 Bowling Stats Tracker
+## 🎳 Bowling Stats Tracker: Version - 0.1.0
 
 *A SwiftUI-powered bowling statistics tracking app for iPhone*
 
