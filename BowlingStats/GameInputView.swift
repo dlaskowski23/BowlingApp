@@ -1,250 +1,292 @@
 import SwiftUI
 
+extension UIApplication {
+    func endEditing(_ force: Bool) {
+        self.sendAction(#selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil)
+    }
+}
+
 struct GameInputView: View {
     @Environment(\.presentationMode) var presentationMode // Allows dismissal
-    var leagueName: String? // Optional League Name
+    var leagueName: String? = nil // Optional League Name
+    init(leagueName: String? = nil) {
+        self.leagueName = leagueName
 
+        // Load Saved Locations
+        if let data = UserDefaults.standard.data(forKey: "savedLocations"),
+           let decodedLocations = try? JSONDecoder().decode([String].self, from: data) {
+            self._savedLocations = State(initialValue: decodedLocations)
+            print("Loaded Locations: \(decodedLocations)")
+        } else {
+            print("No savedLocations found in UserDefaults")
+        }
+
+        // Load Saved Bowling Balls
+        if let data = UserDefaults.standard.data(forKey: "savedBowlingBalls"),
+           let decodedBalls = try? JSONDecoder().decode([String].self, from: data) {
+            self._savedBowlingBalls = State(initialValue: decodedBalls)
+            print("Loaded Bowling Balls: \(decodedBalls)")
+        } else {
+            print("No savedBowlingBalls found in UserDefaults")
+        }
+    }
     @State private var scores: [[Int?]] = Array(repeating: [nil, nil], count: 9) + [[nil, nil, nil]] // 10th frame has 3 possible rolls
     @State private var frameTotals: [Int] = Array(repeating: 0, count: 10)
     @State private var currentFrame = 0
     @State private var currentBall = 0
     @State private var totalScore = 0
+    @State private var showMoreInfo = false
     @State private var location: String = ""
     @State private var notes: String = ""
-    @State private var showMoreInfo = false
+    @State private var showLocationInput = false
+    @State private var showNewBallInput = false
+    @State private var bowlingStyle: String = "One-Handed"
+    @State private var gripStyle: String = "3-Finger"
+    @State private var savedLocations: [String] = []
+    @State private var newLocation: String = ""
+    @State private var selectedBowlingBalls: [String] = []
+    @State private var savedBowlingBalls: [String] = []
+    @State private var newBowlingBall: String = ""
+    @State private var laneNumber: String = ""
+    @State private var ballToDelete: String? = nil
+    @State private var showDeleteAlert = false
+    @State private var selectedBowlingBall: String = ""
+    @State private var selectedPins: Set<Int> = []
+
     
+    @AppStorage("savedLocations") private var savedLocationsData: Data = Data()
     @AppStorage("savedGames") private var savedGamesData: Data = Data()
     @AppStorage("leagueGames") private var leagueGamesData: Data = Data()
 
     var body: some View {
+    VStack {
+        fullScoreboardView
+            .padding(.bottom, 20)
+        
         VStack {
-            // Title
-            Text("Enter Scores")
-                .font(.title.bold())
-                .foregroundColor(.white)
-                .padding(.top, 10)
+            zoomedFrameView
+                .padding()
+                .padding(.bottom, 20)
 
-            // Scoreboard UI - Enlarged to fit 2 frames per scroll
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 15) { // Increased spacing for clarity
-                    ForEach(0..<10, id: \.self) { frame in
-                        VStack {
-                            Text("F\(frame + 1)")
-                                .bold()
-                                .foregroundColor(.white)
-                                .frame(width: 100) // Increased frame width
-
-                            HStack(spacing: 8) {
-                                ForEach(0..<(frame == 9 ? 3 : 2), id: \.self) { ball in // 10th frame allows 3 rolls
-                                    Text(displayScore(for: frame, ball: ball))
-                                        .frame(width: 50, height: 50) // Increased size
-                                        .background(Color.gray.opacity(0.3))
-                                        .cornerRadius(10)
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .frame(width: frame == 9 ? 160 : 130) // Extra width for 10th frame
-
-                            Text("\(frameTotals[frame])")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        .frame(width: frame == 9 ? 160 : 130, height: 140) // Adjust height
-                        .padding(8)
-                        .background(Color.black.opacity(0.9)) // Darker frame background
-                        .cornerRadius(12)
-                    }
-                }
-            }
-            .frame(height: 160) // Adjust height to prevent cutoff
-            .padding()
-            .frame(height: 140) // Increased height for better visibility
-            .padding()
-
-            // Live Score Counter
-            Text("Total Score: \(totalScore)")
-                .font(.title2.bold())
-                .foregroundColor(.green)
-                .padding(.bottom, 8)
-
-            // Frame and Ball Input Section
-            Text("Frame \(currentFrame + 1)")
-                .font(.headline)
-                .foregroundColor(.white)
-
-            // Ball Inputs (Frame by Frame)
-            HStack(spacing: 20) {
-                ForEach(0..<scores[currentFrame].count, id: \.self) { ball in
-                    VStack {
-                        Text("Ball \(ball + 1)")
+                // Live Score Counter
+                Text("Total Score: \(totalScore)")
+                    .font(.title2.bold())
+                    .foregroundColor(.green)
+                    .padding(.bottom, 8)
+                    .padding(.vertical, 5)
+                
+                ballInputSection
+                    .padding(.top, 8)
+                
+                // Strike, Spare, Clear Frame Buttons
+                HStack(spacing: 12) {
+                    Button(action: recordStrike) {
+                        Text("Strike")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
                             .foregroundColor(.white)
-                        TextField("0", text: Binding(
-                            get: { scores[currentFrame][ball]?.description ?? "" },
-                            set: { newValue in handleInput(newValue, ball: ball) }
-                        ))
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 60, height: 40) // Adjusted size
-                        .keyboardType(.numberPad)
-                        .background(Color.black.opacity(0.3)) // Ensures dark mode visibility
-                        .foregroundColor(.black)
-                        .accentColor(.black) // Ensures cursor is white
-                        .cornerRadius(8)
+                            .cornerRadius(12)
+                    }
+
+                    Button(action: recordSpare) {
+                        Text("Spare")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.orange)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+
+                    Button(action: clearFrame) {
+                        Text("Clear")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
                     }
                 }
+                .padding(.horizontal)
+                .padding(.top, 12)
+                
+                frameNavigationButtons
+                    .padding(.top, 10)
             }
             .padding()
-
-            // Strike, Spare, Clear Frame Buttons
-            HStack(spacing: 12) {
-                Button(action: recordStrike) {
-                    Text("Strike")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-
-                Button(action: recordSpare) {
-                    Text("Spare")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.orange)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-
-                Button(action: clearFrame) {
-                    Text("Clear Frame")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top)
-
-            // Navigation Buttons
-            HStack(spacing: 20) {
-                Button(action: moveToPreviousFrame) {
-                    Text("Back")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(currentFrame == 0 ? Color.gray : Color.teal)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-                .disabled(currentFrame == 0)
-
-                Button(action: moveToNextFrame) {
-                    Text("Next Frame")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.purple)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top)
-
-            // Save / Discard Buttons
-            HStack(spacing: 15) {
-                Button(action: {
-                    saveGame()
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    Text("Save Game")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.green)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-
-                Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                    Text("Discard Game")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 15)
-
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.ignoresSafeArea(edges: .all)) // Fixes dark mode covering top/bottom
         .navigationTitle("Enter Scores")
         .toolbar {
-            // Close Button (Upper Right)
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.red)
-                        .font(.title2)
-                }
-            }
-
-            // More Info Button (Upper Left)
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: { showMoreInfo.toggle() }) {
                     Image(systemName: "info.circle")
-                        .foregroundColor(.blue)
+                        .foregroundColor(.white)
                         .font(.title2)
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Save") {
+                    saveGame()
+                    presentationMode.wrappedValue.dismiss()
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Discard") {
+                    presentationMode.wrappedValue.dismiss()
                 }
             }
         }
         .sheet(isPresented: $showMoreInfo) {
             VStack {
-                Text("Game Details")
-                    .font(.title2.bold())
-                    .padding(.top)
-
-                // Location Input
-                VStack(alignment: .leading) {
-                    Text("📍 Location")
+                HStack {
+                    Text("Game Details")
                         .font(.headline)
+                        .bold()
                         .foregroundColor(.white)
-                    TextField("Enter bowling alley", text: $location)
+                        .padding(.bottom, 5)
+
+                    Spacer() // Pushes the close button to the right
+
+                    Button(action: { showMoreInfo = false }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.red)
+                    }
+                }
+                .padding(.horizontal)
+                List {
+                    Picker("Bowling Style", selection: $bowlingStyle) {
+                        Text("One-Handed").tag("One-Handed")
+                        Text("Two-Handed").tag("Two-Handed")
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    
+                    Picker("Grip Style", selection: $gripStyle) {
+                        Text("3-Finger").tag("3-Finger")
+                        Text("2-Finger").tag("2-Finger")
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    
+                    Picker("Location", selection: $location) {
+                        Text("None").tag("")
+                        ForEach(savedLocations, id: \.self) { loc in
+                            Text(loc).tag(loc)
+                        }
+                        Text("+ Add New Location").tag("Add New Location")
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    .onChange(of: location) { oldValue, newValue in
+                        showLocationInput = (newValue == "Add New Location")
+                        if newValue != "Add New Location" {
+                            newLocation = ""
+                        }
+                    }
+                    
+                    if showLocationInput {
+                        TextField("Enter new location", text: $newLocation, onCommit: {
+                            if !newLocation.isEmpty {
+                                DispatchQueue.main.async {
+                                    savedLocations.append(newLocation)
+                                    if let encoded = try? JSONEncoder().encode(savedLocations) {
+                                        UserDefaults.standard.set(encoded, forKey: "savedLocations")
+                                    }
+                                    location = newLocation
+                                    newLocation = ""
+                                    showLocationInput = false
+                                }
+                            }
+                        })
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .padding()
-                        .background(Color.gray.opacity(0.2))
-                        .cornerRadius(10)
+                    }
+                    Picker("Lane Number", selection: $laneNumber) {
+                        Text("None").tag("")
+                        ForEach(1...40, id: \.self) { lane in
+                            Text("Lane \(lane)").tag("\(lane)") // Convert to string for selection
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle()) // Change to Menu Picker
+                    
+                    Section(header: Text("Bowling Balls").font(.headline))
+                    {
+                        Picker("Select Bowling Ball", selection: $selectedBowlingBall) {
+                            Text("None").tag("")
+                            ForEach(savedBowlingBalls, id: \.self) { ball in
+                                Text(ball).tag(ball)
+                            }
+                            Text("+ Add New Ball").tag("Add New Ball")
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                        .onChange(of: selectedBowlingBall) { oldValue, newValue in
+                            showNewBallInput = (newValue == "Add New Ball")
+                            if newValue != "Add New Ball" {
+                                newBowlingBall = ""
+                            }
+                        }
+                        
+                        if showNewBallInput {
+                            TextField("Enter new bowling ball", text: $newBowlingBall, onCommit: {
+                                if !newBowlingBall.isEmpty {
+                                    DispatchQueue.main.async {
+                                        savedBowlingBalls.append(newBowlingBall)
+                                        if let encoded = try? JSONEncoder().encode(savedBowlingBalls) {
+                                            UserDefaults.standard.set(encoded, forKey: "savedBowlingBalls")
+                                        }
+                                        selectedBowlingBall = newBowlingBall
+                                        newBowlingBall = ""
+                                        showNewBallInput = false
+                                    }
+                                }
+                            })
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+                    }
+                    
+                    Section(header: Text("Notes").font(.headline)) {
+                        TextEditor(text: $notes)
+                            .frame(height: 100)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(10)
+                            .onTapGesture {
+                                // Ensure TextEditor is active and prevents background tap dismissal
+                            }
+                    }
                 }
-                .padding()
-
-                // Notes Input
-                VStack(alignment: .leading) {
-                    Text("📝 Notes")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    TextEditor(text: $notes)
-                        .frame(height: 100)
-                        .padding()
-                        .background(Color.gray.opacity(0.2))
-                        .cornerRadius(10)
-                }
-                .padding()
-
-                // Close Button
-                Button(action: { showMoreInfo = false }) {
-                    Text("Close")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-                .padding()
+                .overlay(Color.clear.allowsHitTesting(false))
+                .scrollContentBackground(.hidden)
+                .background(Color.black)
             }
+            .overlay(Color.clear.allowsHitTesting(false))
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
+            .preferredColorScheme(.dark) // Ensures dark mode appearance
+            .onTapGesture {
+                // Dismiss keyboard when tapping outside
+                UIApplication.shared.endEditing(true)
+            }
+            .alert("Delete Bowling Ball?", isPresented: $showDeleteAlert) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    if let ball = ballToDelete, let index = savedBowlingBalls.firstIndex(of: ball) {
+                        savedBowlingBalls.remove(at: index)
+                        ballToDelete = nil
+                        
+                        // Update UserDefaults
+                        if let encoded = try? JSONEncoder().encode(savedBowlingBalls) {
+                            UserDefaults.standard.set(encoded, forKey: "savedBowlingBalls")
+                        }
+                    }
+                }
+            } message: {
+                Text("This will remove \(ballToDelete ?? "this ball") permanently.")
+            }
+        }
+        .onTapGesture {
+            // Dismiss keyboard when tapping outside
+            UIApplication.shared.endEditing(true)
         }
     }
 
@@ -253,10 +295,24 @@ struct GameInputView: View {
 
     /// Handles Text Input for Ball 1 and Ball 2
     private func handleInput(_ newValue: String, ball: Int) {
-        if let value = Int(newValue), value >= 0, value <= 10 {
-            scores[currentFrame][ball] = value
-            updateScore()
+        guard let value = Int(newValue), value >= 0, value <= 10 else { return }
+
+        if currentFrame < 9 { // Frames 1-9 validation
+            if ball == 1 { // Checking second ball entry
+                let firstBall = scores[currentFrame][0] ?? 0
+                if firstBall + value > 10 {
+                    return // Prevents illegal score entry
+                }
+            }
         }
+
+        // Frame 10 logic (No restriction on sum)
+        scores[currentFrame][ball] = value
+        updateScore()
+    }
+    private func showDeleteConfirmation(for ball: String) {
+        ballToDelete = ball
+        showDeleteAlert = true
     }
 
     /// Clears the current frame’s inputs
@@ -318,20 +374,22 @@ struct GameInputView: View {
         updateScore()
     }
 
-    /// Moves to the next frame
+    /// Moves to the next frame with smooth scrolling
     private func moveToNextFrame() {
         if currentFrame < 9 {
-            currentFrame += 1
-            currentBall = 0
+            withAnimation {
+                currentFrame += 1
+            }
         }
         updateScore()
     }
 
-    /// Moves to the previous frame
+    /// Moves to the previous frame with smooth scrolling
     private func moveToPreviousFrame() {
         if currentFrame > 0 {
-            currentFrame -= 1
-            currentBall = 0
+            withAnimation {
+                currentFrame -= 1
+            }
         }
     }
 
@@ -382,7 +440,7 @@ struct GameInputView: View {
             let date = dateFormatter.string(from: Date())
         
 
-        let gameData = BowlingGame(date: date, scores: scores, totalScore: totalScore, frameTotals: frameTotals, location: location, notes: notes)
+        let gameData = BowlingGame(date: date, scores: scores, totalScore: totalScore, frameTotals: frameTotals, bowlingStyle: bowlingStyle, gripStyle: gripStyle, bowlingBalls: selectedBowlingBalls, location: location, laneNumber: laneNumber, notes: notes)
 
             if let league = leagueName {
                 // Save to the specific league
@@ -411,6 +469,156 @@ struct GameInputView: View {
             }
             return []
         }
+    
+    private var fullScoreboardView: some View {
+        HStack(spacing: 4) { // Reduce spacing between frames
+            ForEach(0..<10, id: \.self) { frame in
+                VStack(spacing: 2) { // Reduce spacing within each frame
+                    Text("F\(frame + 1)")
+                        .bold()
+                        .foregroundColor(.white)
+                        .font(.caption) // Make text smaller to fit
+                    
+                    VStack(spacing: 2) { // Reduce spacing between ball slots
+                        ForEach(0..<(frame == 9 ? 3 : 2), id: \.self) { ball in
+                            Text(displayScore(for: frame, ball: ball))
+                                .frame(width: 30, height: 30) // Smaller box size
+                                .background(currentFrame == frame ? Color.blue.opacity(0.6) : Color.gray.opacity(0.3))
+                                .cornerRadius(4)
+                                .font(.caption2) // Make score text smaller
+                        }
+                    }
+                    .padding(.bottom, frame == 9 ? 0 : 5) // Add extra bottom padding for non-10th frames
+                    
+                    Text("\(frameTotals[frame])")
+                        .foregroundColor(.white.opacity(0.8))
+                        .font(.caption2) // Smaller total score text
+                }
+                .padding(4)
+                .background(currentFrame == frame ? Color.blue.opacity(0.3) : Color.clear)
+                .cornerRadius(6)
+                .alignmentGuide(.bottom) { _ in frame == 9 ? 0 : -5 } // Align bottom across all frames
+            }
+        }
+        .padding(.horizontal, 8) // Reduce horizontal padding to fit better
+        .frame(height: 50) // Lower height to make space
+    }
+
+    private var zoomedFrameView: some View {
+        GeometryReader { geometry in
+            VStack {
+                VStack {
+                    Text("Frame \(currentFrame + 1)")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    HStack(spacing: 5) {
+                        ForEach(0..<(currentFrame == 9 ? 3 : 2), id: \.self) { ball in
+                            Text(displayScore(for: currentFrame, ball: ball))
+                                .frame(width: 75, height: 75)
+                                .background(Color.blue.opacity(0.6))
+                                .cornerRadius(6)
+                                .font(.headline)
+                        }
+                    }
+                    Text("\(frameTotals[currentFrame])")
+                        .foregroundColor(.white.opacity(0.8))
+                        .font(.caption)
+                }
+                .padding(30)
+                .background(Color.blue.opacity(0.3))
+                .cornerRadius(8)
+                .frame(width: geometry.size.width)
+                .transition(.slide)
+                .animation(.easeInOut, value: currentFrame)
+            }
+        }
+        .frame(height: 150)
+        
+    }
+    
+    private var ballInputSection: some View {
+        VStack {
+            HStack(spacing: 7) {
+                VStack {
+                    Text("Ball 1").foregroundColor(.white)
+                    Picker("Ball 1", selection: Binding(
+                        get: { scores[currentFrame][0] ?? 0 },
+                        set: { newValue in
+                            scores[currentFrame][0] = newValue
+                            if currentFrame < 9 { scores[currentFrame][1] = nil }
+                            updateScore()
+                        }
+                    )) {
+                        ForEach(0...10, id: \.self) { number in
+                            Text("\(number)").tag(number)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                }
+                VStack {
+                    Text("Ball 2").foregroundColor(.white)
+                    Picker("Ball 2", selection: Binding(
+                        get: { scores[currentFrame][1] ?? 0 },
+                        set: { newValue in
+                            scores[currentFrame][1] = newValue
+                            updateScore()
+                        }
+                    )) {
+                    ForEach(0...(currentFrame == 9 && scores[currentFrame][0] == 10 ? 10 : (10 - (scores[currentFrame][0] ?? 0))), id: \.self) { number in
+                        Text("\(number)").tag(number)
+                    }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    .disabled(scores[currentFrame][0] == 10 && currentFrame < 9) // Disable if first ball is a strike, except for frame 10
+                }
+
+                if currentFrame == 9 { // Third ball for 10th frame
+                    VStack {
+                        Text("Ball 3").foregroundColor(.white)
+                        Picker("Ball 3", selection: Binding(
+                            get: { scores[currentFrame][2] ?? 0 },
+                            set: { newValue in
+                                scores[currentFrame][2] = newValue
+                                updateScore()
+                            }
+                        )) {
+                                let maxBall3 = (scores[currentFrame][0] == 10 || ((scores[currentFrame][0] ?? 0) + (scores[currentFrame][1] ?? 0) == 10)) ? 10 : (10 - (scores[currentFrame][1] ?? 0))
+                                ForEach(0...maxBall3, id: \.self) { number in
+                                    Text("\(number)").tag(number)
+                                }
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                        .frame(maxWidth: 60) // Increase width to match Ball 1 & 2
+                        .disabled(scores[currentFrame][1] == nil) // Enable only if Ball 2 has a value
+                    }
+                }
+            }
+        }
+    }
+    private var frameNavigationButtons: some View {
+        HStack(spacing: 20) {
+            Button(action: moveToPreviousFrame) {
+                Text("Back")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(currentFrame == 0 ? Color.gray : Color.teal)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+            }
+            .disabled(currentFrame == 0)
+            
+            Button(action: moveToNextFrame) {
+                Text("Next Frame")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.purple)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top)
+    }
 }
 
 struct BowlingGame: Codable, Identifiable {
@@ -420,7 +628,11 @@ struct BowlingGame: Codable, Identifiable {
     var totalScore: Int
     var frameTotals: [Int]
     
+    var bowlingStyle: String? // One-Handed, Two-Handed
+    var gripStyle: String?     // 3-Finger, 2-Finger
+    var bowlingBalls: [String]? // 🏆 Multiple bowling balls used
     var location: String?  // 🏠 Where the game was played
+    var laneNumber: String?
     var notes: String?     // 📝 Additional details
 
     var isLeagueGame: Bool = false
@@ -434,7 +646,3 @@ struct League: Codable, Identifiable {
     var dateAdded: Date
 }
 
-// MARK: - Preview
-#Preview {
-    GameInputView()
-}

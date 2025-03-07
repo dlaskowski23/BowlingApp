@@ -36,31 +36,48 @@ struct GameDetailView: View {
                     }
                     .padding(.horizontal, 10) // Ensures frames aren’t cut off
                 }
-                if let location = game.location, !location.isEmpty {
-                    VStack(alignment: .leading) {
-                        Text("📍 Location")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text(location)
-                            .foregroundColor(.gray)
-                    }
-                    .padding()
-                    .background(Color(UIColor.systemGray5))
-                    .cornerRadius(8)
-                }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Game Details")
+                        .font(.title3)
+                        .bold()
+                        .padding(.bottom, 5)
+                        .foregroundColor(.white)
 
-                if let notes = game.notes, !notes.isEmpty {
-                    VStack(alignment: .leading) {
-                        Text("📝 Notes")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text(notes)
-                            .foregroundColor(.gray)
+                    VStack(alignment: .leading, spacing: 5) {
+                        if let location = game.location, !location.isEmpty {
+                            BreakdownRowString(label: "Location", value: location)
+                            Divider()
+                        }
+                        if let laneNumber = game.laneNumber, !laneNumber.isEmpty {
+                            BreakdownRowString(label: "Lane Number", value: laneNumber)
+                            Divider()
+                        }
+
+                        if let style = game.bowlingStyle, !style.isEmpty {
+                            BreakdownRowString(label: "Bowling Style", value: style)
+                            Divider()
+                        }
+                        
+                        if let grip = game.gripStyle, !grip.isEmpty {
+                            BreakdownRowString(label: "Grip Style", value: grip)
+                            Divider()
+                        }
+
+                        if let balls = game.bowlingBalls, !balls.isEmpty {
+                            BreakdownRowString(label: "Bowling Balls", value: balls.joined(separator: ", "))
+                            Divider()
+                        }
+
+                        if let notes = game.notes, !notes.isEmpty {
+                            BreakdownRowString(label: "Notes", value: notes)
+                        }
                     }
                     .padding()
-                    .background(Color(UIColor.systemGray5))
+                    .background(Color(UIColor.systemGray5)) // Matches Game Breakdown Style
                     .cornerRadius(8)
                 }
+                .padding()
+                
             }
         }
         .navigationTitle("Game Details")
@@ -93,6 +110,20 @@ struct GameDetailView: View {
 }
 
 // **Breakdown Row Component**
+struct BreakdownRowString: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.white) // White text for Dark Mode
+            Spacer()
+            Text(value)
+                .foregroundColor(.gray) // Make it slightly dimmer
+        }
+    }
+}
 struct BreakdownRow: View {
     let label: String
     let value: Int
