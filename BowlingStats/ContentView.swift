@@ -1097,6 +1097,3 @@ struct StatRow: View {
         }
     }
 }
-#Preview {
-    ContentView()
-}

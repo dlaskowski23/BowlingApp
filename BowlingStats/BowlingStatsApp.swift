@@ -13,7 +13,7 @@ struct BowlingStatsApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SplashScreenView() // Show the splash screen first
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
         }
     }
